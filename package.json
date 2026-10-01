@@ -1,0 +1,17 @@
+{
+  "name": "mywatertally",
+  "version": "0.1.0",
+  "description": "Track how many 8-ounce glasses of water you drink each day.",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}

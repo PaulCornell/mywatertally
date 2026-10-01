@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My Water Tally</title>
+  <style>
+    :root {
+      --bg: #f4f8fb;
+      --card: #ffffff;
+      --text: #1b2a38;
+      --muted: #5d6f80;
+      --accent: #1f7ae0;
+      --accent-text: #ffffff;
+      --border: #d8e2ea;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1720;
+        --card: #18232e;
+        --text: #e6eef5;
+        --muted: #93a4b4;
+        --accent: #4b9cf5;
+        --accent-text: #0f1720;
+        --border: #2a3a49;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 48px 16px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
+    }
+    main {
+      width: 100%;
+      max-width: 380px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px 24px;
+      text-align: center;
+    }
+    h1 { margin: 0 0 4px; font-size: 1.5rem; }
+    .date { margin: 0 0 24px; color: var(--muted); }
+    .counter {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+    }
+    .count { font-size: 4rem; font-weight: 700; min-width: 2ch; font-variant-numeric: tabular-nums; }
+    button {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      border: none;
+      background: var(--accent);
+      color: var(--accent-text);
+      font-size: 2rem;
+      line-height: 1;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.35; cursor: not-allowed; }
+    button:focus-visible { outline: 3px solid var(--text); outline-offset: 3px; }
+    .ounces { margin: 12px 0 0; color: var(--muted); }
+    .error { color: #d64545; min-height: 1.2em; margin: 12px 0 0; }
+    h2 { font-size: 1rem; margin: 28px 0 8px; text-align: left; }
+    ul { list-style: none; margin: 0; padding: 0; text-align: left; }
+    li {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-top: 1px solid var(--border);
+    }
+    li .muted { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>My Water Tally</h1>
+    <p class="date" id="date"></p>
+
+    <div class="counter">
+      <button id="minus" type="button" aria-label="Remove a glass">−</button>
+      <div class="count" id="count" aria-live="polite">0</div>
+      <button id="plus" type="button" aria-label="Add a glass">+</button>
+    </div>
+    <p class="ounces" id="ounces">0 glasses (0 oz)</p>
+    <p class="error" id="error" role="alert"></p>
+
+    <h2>Recent days</h2>
+    <ul id="history"></ul>
+  </main>
+
+  <script>
+    const OUNCES_PER_GLASS = 8;
+    const els = {
+      date: document.getElementById('date'),
+      count: document.getElementById('count'),
+      ounces: document.getElementById('ounces'),
+      minus: document.getElementById('minus'),
+      plus: document.getElementById('plus'),
+      error: document.getElementById('error'),
+      history: document.getElementById('history'),
+    };
+
+    // Local date as YYYY-MM-DD, so "today" follows the user's own time zone.
+    function localDay(d = new Date()) {
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    }
+
+    function formatDay(day) {
+      const [y, m, d] = day.split('-').map(Number);
+      return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+        weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+      });
+    }
+
+    let today = localDay();
+
+    async function api(method, url) {
+      const res = await fetch(url, { method });
+      if (!res.ok) throw new Error(`Request failed (${res.status})`);
+      return res.json();
+    }
+
+    function render({ glasses }) {
+      els.date.textContent = formatDay(today);
+      els.count.textContent = glasses;
+      els.ounces.textContent =
+        `${glasses} glass${glasses === 1 ? '' : 'es'} (${glasses * OUNCES_PER_GLASS} oz)`;
+      els.minus.disabled = glasses === 0;
+    }
+
+    function renderHistory(rows) {
+      els.history.replaceChildren(...rows.map(({ day, glasses }) => {
+        const li = document.createElement('li');
+        const label = document.createElement('span');
+        label.textContent = day === today ? 'Today' : formatDay(day);
+        const value = document.createElement('span');
+        value.className = 'muted';
+        value.textContent = `${glasses} × 8 oz`;
+        li.append(label, value);
+        return li;
+      }));
+      if (!rows.length) {
+        const li = document.createElement('li');
+        li.innerHTML = '<span class="muted">No entries yet.</span>';
+        els.history.append(li);
+      }
+    }
+
+    async function refresh() {
+      try {
+        const [tally, history] = await Promise.all([
+          api('GET', `/api/tally/${today}`),
+          api('GET', `/api/history/${today}`),
+        ]);
+        render(tally);
+        renderHistory(history);
+        els.error.textContent = '';
+      } catch (err) {
+        els.error.textContent = 'Could not reach the server. Is it running?';
+      }
+    }
+
+    async function adjust(action) {
+      // Roll over to a new day if the page was left open past midnight.
+      today = localDay();
+      els.plus.disabled = els.minus.disabled = true;
+      try {
+        await api('POST', `/api/tally/${today}/${action}`);
+      } catch (err) {
+        els.error.textContent = 'Could not save. Please try again.';
+      } finally {
+        els.plus.disabled = false;
+        await refresh();
+      }
+    }
+
+    els.plus.addEventListener('click', () => adjust('increment'));
+    els.minus.addEventListener('click', () => adjust('decrement'));
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        today = localDay();
+        refresh();
+      }
+    });
+
+    refresh();
+  </script>
+</body>
+</html>
